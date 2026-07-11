@@ -672,11 +672,15 @@
   // カメラは「撮る」タブが最初に開かれた時だけ起動する(初期表示はルートタブのため)
   // GPSの取得開始はログイン後(initAppAfterLogin)に行う
 
+  let geoWatchStarted = false;
+
   function startGeolocationWatch() {
+    if (geoWatchStarted) return;
     if (!navigator.geolocation) {
       gpsStatus.textContent = '位置情報 利用不可';
       return;
     }
+    geoWatchStarted = true;
     navigator.geolocation.watchPosition(
       (pos) => {
         lastPosition = pos.coords;
@@ -685,10 +689,19 @@
         maybeAddRoutePoint(pos.coords);
         centerMapOnFirstFixIfNeeded(pos.coords);
       },
-      (err) => { gpsStatus.textContent = '位置情報 取得失敗: ' + err.message; },
+      (err) => {
+        gpsStatus.textContent = '位置情報 取得失敗: ' + err.message;
+        geoWatchStarted = false; // 失敗時は再試行できるようにする(タップで再取得を狙う)
+      },
       { enableHighAccuracy: true }
     );
   }
+
+  // ログインがユーザー操作(タップ)を伴わずに自動で完了した場合(セッション復元時など)、
+  // iOS Safariが位置情報の許可ダイアログを出さないことがあるため、
+  // 最初にユーザーが画面のどこかをタップ/タッチした時に確実に再試行する
+  document.addEventListener('click', () => startGeolocationWatch(), { passive: true });
+  document.addEventListener('touchstart', () => startGeolocationWatch(), { passive: true });
 
   shootBtn.addEventListener('click', () => {
     const maxWidth = 800;
