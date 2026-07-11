@@ -79,7 +79,9 @@
     throw new Error('supabase-js failed to load');
   }
 
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  // ライブラリ自体が window.supabase というグローバル変数を作るため、
+  // こちらの変数名は supabaseClient にして名前の衝突を避ける
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   statusEl.textContent = '準備完了。メールアドレスとパスワードを入力してください。';
   const authPanel = document.getElementById('authPanel');
   const loggedInPanel = document.getElementById('loggedInPanel');
@@ -100,14 +102,14 @@
   }
 
   // ページを開いた時点で、既にログイン済みのセッションが残っていれば復元する
-  supabase.auth.getSession().then(({ data }) => {
+  supabaseClient.auth.getSession().then(({ data }) => {
     if (data.session) showLoggedIn(data.session.user);
   });
 
   document.getElementById('signUpBtn').addEventListener('click', async () => {
     statusEl.textContent = '登録中…';
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await supabaseClient.auth.signUp({
         email: emailInput.value,
         password: passwordInput.value
       });
@@ -126,7 +128,7 @@
   document.getElementById('signInBtn').addEventListener('click', async () => {
     statusEl.textContent = 'ログイン中…';
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
         email: emailInput.value,
         password: passwordInput.value
       });
@@ -141,7 +143,7 @@
   });
 
   document.getElementById('signOutBtn').addEventListener('click', async () => {
-    await supabase.auth.signOut();
+    await supabaseClient.auth.signOut();
     showLoggedOut();
     statusEl.textContent = 'ログアウトしました。';
   });
