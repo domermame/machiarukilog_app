@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MachiLog — 街歩きログアプリ</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --color-bg: #ffffff;
+      --color-bg-secondary: #f5f4f0;
+      --color-bg-info: #e8f4ec;
+      --color-text-primary: #1a1a18;
+      --color-text-secondary: #5f5e5a;
+      --color-text-info: #1a5e35;
+      --color-border: rgba(0,0,0,0.10);
+      --color-border-md: rgba(0,0,0,0.20);
+      --color-green-bg: #e8f4ec;
+      --color-green: #2a7a4b;
+      --color-green-text: #1a5e35;
+      --color-amber-bg: #fdf3e1;
+      --color-amber: #b97a1a;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --color-bg: #1c1c1a;
+        --color-bg-secondary: #252523;
+        --color-bg-info: #0a2e18;
+        --color-text-primary: #f0ede8;
+        --color-text-secondary: #b4b2a9;
+        --color-text-info: #6fcf97;
+        --color-border: rgba(255,255,255,0.10);
+        --color-border-md: rgba(255,255,255,0.20);
+        --color-green-bg: #0a2e18;
+        --color-green: #5dcf8a;
+        --color-green-text: #8de4ad;
+        --color-amber-bg: #2e1f06;
+        --color-amber: #f0b84a;
+      }
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+      background: var(--color-bg);
+      color: var(--color-text-primary);
+      font-size: 16px;
+      line-height: 1.7;
+    }
+
+    .container { max-width: 720px; margin: 0 auto; }
+
+    /* ---- Hero ---- */
+    .hero {
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-banner-img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .hero-cta {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      padding: 1.5rem 1.5rem 0;
+      background: var(--color-bg);
+    }
+    .btn-hero-primary {
+      background: var(--color-green);
+      color: #fff;
+      border: none;
+      padding: 13px 30px;
+      border-radius: var(--radius-md);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn-hero-primary:hover { opacity: 0.88; }
+    .btn-hero-secondary {
+      background: transparent;
+      color: var(--color-text-primary);
+      border: 0.5px solid var(--color-border-md);
+      padding: 13px 30px;
+      border-radius: var(--radius-md);
+      font-size: 15px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn-hero-secondary:hover { background: var(--color-bg-secondary); }
+
+
+    /* ---- Divider ---- */
+    .divider { height: 0.5px; background: var(--color-border); margin: 0 1.5rem; }
+
+    /* ---- Sections ---- */
+    .section { padding: 2.5rem 1.5rem; }
+    .section-label {
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      color: var(--color-green);
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      text-align: center;
+    }
+    .section-title {
+      font-size: 1.4rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+      text-align: center;
+      letter-spacing: -0.01em;
+    }
+    .section-sub {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      text-align: center;
+      margin-bottom: 1.8rem;
+      line-height: 1.7;
+    }
+
+    /* ---- Problem section ---- */
+    .problem-intro {
+      background: var(--color-amber-bg);
+      border: 0.5px solid rgba(185,122,26,0.2);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.2rem;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+    .problem-intro .pi-icon {
+      font-size: 24px;
+      color: var(--color-amber);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .problem-intro h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; color: var(--color-amber); }
+    .problem-intro p { font-size: 13px; color: var(--color-text-secondary); line-height: 1.7; }
+
+    .problems {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .problem-card {
+      background: var(--color-bg);
+      border: 0.5px solid var(--color-border-md);
+      border-radius: var(--radius-lg);
+      padding: 1rem 1.25rem;
+    }
+    .problem-card .icon { font-size: 20px; color: var(--color-text-secondary); margin-bottom: 8px; }
+    .problem-card h3 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .problem-card p { font-size: 12px; color: var(--color-text-secondary); line-height: 1.6; }
+
+    /* ---- Flow (how it works) ---- */
+    .flow { display: flex; flex-direction: column; }
+    .flow-step {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      padding: 1.1rem 0;
+      border-bottom: 0.5px solid var(--color-border);
+    }
+    .flow-step:last-child { border-bottom: none; }
+    .flow-num {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--color-green-bg);
+      color: var(--color-green);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .flow-content h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .flow-content p { font-size: 13px; color: var(--color-text-secondary); line-height: 1.6; }
+    .flow-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--color-green-bg);
+      color: var(--color-green-text);
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 500;
+      margin-top: 6px;
+    }
+
+    /* ---- Features ---- */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .feature {
+      background: var(--color-bg-secondary);
+      border-radius: var(--radius-md);
+      padding: 1.1rem;
+    }
+    .feature .fi { font-size: 22px; color: var(--color-green); margin-bottom: 8px; }
+    .feature h3 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .feature p { font-size: 12px; color: var(--color-text-secondary); line-height: 1.55; }
+
+    /* ---- Album preview ---- */
+    .album-preview {
+      background: var(--color-bg-secondary);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      border: 0.5px solid var(--color-border);
+    }
+    .album-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 1rem;
+    }
+    .album-title-row .album-icon { font-size: 22px; color: var(--color-green); }
+    .album-title-row h3 { font-size: 15px; font-weight: 600; }
+    .album-photos {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 1rem;
+    }
+    .album-photo {
+      aspect-ratio: 1;
+      border-radius: 8px;
+      background: var(--color-bg-secondary);
+      border: 0.5px solid var(--color-border);
+      position: relative;
+      overflow: hidden;
+    }
+    .album-photo img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .album-photo .ph-label {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 18px 7px 6px;
+      font-size: 9px;
+      color: #fff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+      background: linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 100%);
+      text-align: left;
+      font-weight: 500;
+      line-height: 1.4;
+    }
+    .album-photo.featured {
+      grid-column: span 2;
+      grid-row: span 2;
+    }
+    .album-photo.featured .ph-label { font-size: 11px; padding: 32px 10px 10px; }
+    .album-meta { display: flex; gap: 12px; flex-wrap: wrap; }
+    .album-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+    }
+    .album-meta-item i { font-size: 14px; color: var(--color-green); }
+
+    /* ---- Users ---- */
+    .users {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .user-card {
+      background: var(--color-bg);
+      border: 0.5px solid var(--color-border-md);
+      border-radius: var(--radius-lg);
+      padding: 1.1rem 1.25rem;
+    }
+    .user-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--color-green-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+    .user-card h3 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .user-card p { font-size: 12px; color: var(--color-text-secondary); line-height: 1.6; }
+
+    /* ---- Info callout ---- */
+    .info-callout {
+      background: var(--color-bg-info);
+      border: 0.5px solid rgba(42,122,75,0.25);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+    .info-callout .ic-icon { font-size: 22px; color: var(--color-green); flex-shrink: 0; margin-top: 2px; }
+    .info-callout h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--color-green-text); }
+    .info-callout p { font-size: 13px; color: var(--color-text-secondary); line-height: 1.65; }
+
+    /* ---- CTA ---- */
+    .cta-section {
+      background: linear-gradient(135deg, #1a4d2e 0%, #2a7a4b 100%);
+      padding: 3rem 1.5rem;
+      text-align: center;
+      color: #fff;
+    }
+    .cta-section h2 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.6rem; }
+    .cta-section p { font-size: 14px; opacity: 0.82; margin-bottom: 1.8rem; line-height: 1.7; }
+    .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+    /* ---- Footer ---- */
+    .footer {
+      padding: 1.5rem;
+      text-align: center;
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      border-top: 0.5px solid var(--color-border);
+    }
+
+    /* ---- Stat bar ---- */
+    .stat-bar {
+      display: flex;
+      gap: 0;
+      background: var(--color-bg-secondary);
+      border-radius: var(--radius-lg);
+      border: 0.5px solid var(--color-border);
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+    }
+    .stat-item {
+      flex: 1;
+      padding: 1rem;
+      text-align: center;
+      border-right: 0.5px solid var(--color-border);
+    }
+    .stat-item:last-child { border-right: none; }
+    .stat-val { font-size: 1.5rem; font-weight: 700; color: var(--color-green); }
+    .stat-lbl { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Hero -->
+  <section class="hero">
+    <img src="Gemini_Generated_Image_ucec7oucec7oucec.png" alt="街歩きログアプリ — 歴史とアートに出会う、私の歩いた記録。" class="hero-banner-img" />
+    <div class="hero-cta">
+      <a href="app.html" class="btn-hero-primary">アプリを使ってみる</a>
+      <a href="#features" class="btn-hero-secondary">機能を見る</a>
+    </div>
+  </section>
+
+  <!-- Problem -->
+  <section class="section" id="problem">
+    <p class="section-label">課題</p>
+    <h2 class="section-title">街歩きのメモ、こんな悩みはありませんか？</h2>
+    <p class="section-sub">歴史散歩やアート探索は楽しいのに、記録に手間がかかりすぎる。</p>
+
+    <div class="problem-intro">
+      <i class="ti ti-alert-triangle pi-icon"></i>
+      <div>
+        <h3>よくある「記録あるある」</h3>
+        <p>「あの石碑、なんて書いてあったっけ？」「この写真、どこで撮ったんだろう？」— 後から振り返ろうとしても、記録がバラバラで思い出せない。そんな経験はありませんか？</p>
+      </div>
+    </div>
+
+    <div class="problems">
+      <div class="problem-card">
+        <i class="ti ti-pencil-off icon"></i>
+        <h3>歩きながらメモが取れない</h3>
+        <p>立ち止まってノートを開く余裕がない。スマホ入力も手間がかかる。</p>
+      </div>
+      <div class="problem-card">
+        <i class="ti ti-photo-off icon"></i>
+        <h3>写真がどこの場所かわからない</h3>
+        <p>後から写真を見返しても、どこで何を撮ったか文脈が失われている。</p>
+      </div>
+      <div class="problem-card">
+        <i class="ti ti-map-off icon"></i>
+        <h3>どこを歩いたか記録できない</h3>
+        <p>散歩のルートや立ち寄った場所を後から振り返る手段がない。</p>
+      </div>
+      <div class="problem-card">
+        <i class="ti ti-book-off icon"></i>
+        <h3>思い出をまとめられない</h3>
+        <p>写真・メモ・地図がバラバラで、散歩の記録として整理しにくい。</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- How it works -->
+  <section class="section" id="how">
+    <p class="section-label">使い方</p>
+    <h2 class="section-title">3ステップで、街歩きを記録する</h2>
+    <p class="section-sub">歩きながら手軽に記録して、あとからゆっくり振り返る。</p>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-num">1</div>
+        <div class="flow-content">
+          <h3>散歩をスタートする</h3>
+          <p>アプリを開いてスタートボタンを押すだけ。GPSが自動でルートを記録し始めます。タイトル（例：「谷中歴史散歩」）を入力して出発しましょう。</p>
+          <span class="flow-tag"><i class="ti ti-map-pin"></i> GPS自動記録</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">2</div>
+        <div class="flow-content">
+          <h3>気になる場所で記録する</h3>
+          <p>寺や史跡などのポイントに着いたら、アプリから直接カメラを起動して撮影。そのまま音声でメモを吹き込めます。写真と音声は自動で位置情報と紐付けられます。</p>
+          <span class="flow-tag"><i class="ti ti-camera"></i> 撮影</span>
+          <span class="flow-tag" style="margin-left:6px"><i class="ti ti-microphone"></i> 音声メモ</span>
+          <span class="flow-tag" style="margin-left:6px"><i class="ti ti-world"></i> スポット情報取得</span>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-num">3</div>
+        <div class="flow-content">
+          <h3>アルバムとして仕上げる</h3>
+          <p>散歩が終わったら、気に入った写真を選んでアルバムを作成。タイトルをつけて、地図・写真・メモを一冊にまとめた「街歩き記録」が完成します。</p>
+          <span class="flow-tag"><i class="ti ti-photo-album"></i> アルバム作成</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Features -->
+  <section class="section" id="features">
+    <p class="section-label">機能</p>
+    <h2 class="section-title">街歩きに必要な機能を、ひとつに</h2>
+    <p class="section-sub">記録・撮影・メモ・情報収集・アルバム作成まで、これ一本で完結。</p>
+
+    <div class="features">
+      <div class="feature">
+        <i class="ti ti-map-2 fi"></i>
+        <h3>GPSルート記録</h3>
+        <p>歩いた道を自動で地図上に記録。立ち寄ったポイントもピンで表示されます。</p>
+      </div>
+      <div class="feature">
+        <i class="ti ti-camera fi"></i>
+        <h3>アプリ内カメラ</h3>
+        <p>アプリを閉じずに撮影できます。写真は撮影場所の位置情報と自動で紐付け。</p>
+      </div>
+      <div class="feature">
+        <i class="ti ti-microphone fi"></i>
+        <h3>音声メモ</h3>
+        <p>歩きながら話すだけでメモが取れます。後からテキストに変換して編集も可能。</p>
+      </div>
+      <div class="feature">
+        <i class="ti ti-world-search fi"></i>
+        <h3>スポット情報取得</h3>
+        <p>寺院・史跡・美術館などの情報をインターネットから自動取得。その場で詳細がわかります。</p>
+      </div>
+      <div class="feature">
+        <i class="ti ti-edit fi"></i>
+        <h3>あとから編集</h3>
+        <p>家に帰ってからでも写真の順番変更・メモの修正・テキスト入力で記録を整えられます。</p>
+      </div>
+      <div class="feature">
+        <i class="ti ti-photo-album fi"></i>
+        <h3>アルバム作成</h3>
+        <p>「○○町歴史散歩」など題名をつけて、主な写真を選んだアルバムを作成・共有できます。</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Album preview -->
+  <section class="section">
+    <p class="section-label">アルバム</p>
+    <h2 class="section-title">散歩の思い出を、一冊のアルバムに</h2>
+    <p class="section-sub">写真を選んで、タイトルをつけるだけ。記録が「作品」になります。</p>
+
+    <div class="album-preview">
+      <div class="album-title-row">
+        <i class="ti ti-book-2 album-icon"></i>
+        <h3>谷中・根津歴史散歩 — 2025年春</h3>
+      </div>
+      <div class="album-photos">
+        <div class="album-photo featured">
+          <img src="https://images.unsplash.com/photo-1522383225653-ed111181a951?auto=format&fit=crop&w=600&q=80" alt="谷中霊園の桜" loading="lazy" />
+          <span class="ph-label">谷中霊園 春の桜並木</span>
+        </div>
+        <div class="album-photo">
+          <img src="https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=300&q=80" alt="古民家カフェ" loading="lazy" />
+          <span class="ph-label">古民家カフェ</span>
+        </div>
+        <div class="album-photo">
+          <img src="https://images.unsplash.com/photo-1528360983277-13d401cdc186?auto=format&fit=crop&w=300&q=80" alt="根津神社の鳥居" loading="lazy" />
+          <span class="ph-label">根津神社</span>
+        </div>
+        <div class="album-photo">
+          <img src="https://images.unsplash.com/photo-1536098561742-ca998e48cbcc?auto=format&fit=crop&w=300&q=80" alt="谷中銀座商店街" loading="lazy" />
+          <span class="ph-label">谷中銀座商店街</span>
+        </div>
+        <div class="album-photo">
+          <img src="https://images.unsplash.com/photo-1480796927426-f609979314bd?auto=format&fit=crop&w=300&q=80" alt="散歩ルート俯瞰" loading="lazy" />
+          <span class="ph-label">散歩した街並み</span>
+        </div>
+      </div>
+      <div class="album-meta">
+        <div class="album-meta-item"><i class="ti ti-walk"></i> 4.2 km</div>
+        <div class="album-meta-item"><i class="ti ti-clock"></i> 2時間15分</div>
+        <div class="album-meta-item"><i class="ti ti-camera"></i> 写真 18枚</div>
+        <div class="album-meta-item"><i class="ti ti-microphone"></i> 音声メモ 6件</div>
+        <div class="album-meta-item"><i class="ti ti-map-pin"></i> スポット 7か所</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Info callout -->
+  <section class="section">
+    <div class="info-callout">
+      <i class="ti ti-info-circle ic-icon"></i>
+      <div>
+        <h3>スポット情報をその場で確認</h3>
+        <p>お寺や史跡などのポイントに近づくと、インターネットから詳細情報を自動取得。由来・歴史・開館時間などをその場で閲覧でき、アルバムにも情報として保存されます。知識と記録が一体になった、深い街歩き体験を実現します。</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- Target users -->
+  <section class="section">
+    <p class="section-label">こんな方に</p>
+    <h2 class="section-title">街歩きを楽しむすべての人へ</h2>
+    <p class="section-sub">目的は違っても、「歩いた記録を残したい」気持ちは同じ。</p>
+
+    <div class="users">
+      <div class="user-card">
+        <div class="user-avatar">🏯</div>
+        <h3>歴史散歩が好きな方</h3>
+        <p>お寺・史跡・古民家など、歴史的なスポットを巡りながら学びの記録を残したい。</p>
+      </div>
+      <div class="user-card">
+        <div class="user-avatar">🎨</div>
+        <h3>アート・建築探索をする方</h3>
+        <p>路地裏のアートや個性的な建築を発見したら、すぐに記録して後でまとめたい。</p>
+      </div>
+      <div class="user-card">
+        <div class="user-avatar">🌿</div>
+        <h3>街歩き・散策が日課の方</h3>
+        <p>日常の散歩をちょっと特別な体験として記録し、振り返る楽しみを持ちたい。</p>
+      </div>
+      <div class="user-card">
+        <div class="user-avatar">✈️</div>
+        <h3>旅先の街を深く歩く旅人</h3>
+        <p>観光地だけでなく路地も歩く旅で、見たものを丁寧に記録して旅日記にしたい。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <h2>あなたの街歩きを、もっと豊かに。</h2>
+    <p>記録することで、見えてくる景色がある。<br>MachiLogで、街歩きの新しい楽しみ方を始めましょう。</p>
+    <div class="cta-row">
+      <a href="app.html" class="btn-hero-primary">アプリを使ってみる</a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>© 2025 MachiLog — 街歩きログアプリ</p>
+  </footer>
+
+</div>
+</body>
+</html>

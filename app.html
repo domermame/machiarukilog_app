@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>街歩きログ</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --color-bg: #ffffff;
+    --color-bg-secondary: #f5f4f0;
+    --color-bg-info: #e8f4ec;
+    --color-text-primary: #1a1a18;
+    --color-text-secondary: #5f5e5a;
+    --color-text-info: #1a5e35;
+    --color-border: rgba(0,0,0,0.10);
+    --color-border-md: rgba(0,0,0,0.20);
+    --color-green-bg: #e8f4ec;
+    --color-green: #2a7a4b;
+    --color-green-text: #1a5e35;
+    --color-amber-bg: #fdf3e1;
+    --color-amber: #b97a1a;
+    --color-danger: #b93a1a;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-bg: #1c1c1a;
+      --color-bg-secondary: #252523;
+      --color-bg-info: #0a2e18;
+      --color-text-primary: #f0ede8;
+      --color-text-secondary: #b4b2a9;
+      --color-text-info: #6fcf97;
+      --color-border: rgba(255,255,255,0.10);
+      --color-border-md: rgba(255,255,255,0.20);
+      --color-green-bg: #0a2e18;
+      --color-green: #5dcf8a;
+      --color-green-text: #8de4ad;
+      --color-amber-bg: #2e1f06;
+      --color-amber: #f0b84a;
+      --color-danger: #e05a3a;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    background: var(--color-bg-secondary);
+    color: var(--color-text-primary);
+    padding: 0 16px;
+    padding-bottom: 88px; /* 下部タブバーの分だけ余白 */
+  }
+
+  .appbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    margin: 0 -16px 16px;
+    padding: max(14px, env(safe-area-inset-top)) 16px 14px;
+    background: var(--color-bg);
+    border-bottom: 0.5px solid var(--color-border);
+  }
+  .appbar h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+  .appbar .tagline { font-size: 11px; color: var(--color-text-secondary); margin-top: 1px; }
+
+  h2 { font-size: 13px; font-weight: 600; margin: 22px 0 10px; color: var(--color-text-secondary); }
+  #status { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 12px; }
+  #gpsStatus {
+    font-size: 12px;
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: var(--color-green-bg);
+    color: var(--color-green-text);
+    margin-bottom: 12px;
+  }
+  #gpsStatus.waiting { background: var(--color-amber-bg); color: var(--color-amber); }
+
+  section.tab-panel { display: none; }
+  section.tab-panel.active { display: block; }
+
+  #video, #capturedPhoto {
+    width: 100%;
+    max-width: 480px;
+    max-height: 45vh;
+    object-fit: cover;
+    border-radius: var(--radius-lg);
+    background: #000;
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  /* 「この場所を撮影する」ボタンは、映像の高さに関わらずタブバーの上に常に表示する
+     (画面の小さいiPhoneでスクロールしないと押せない問題への対応) */
+  #shootBtn {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(78px + env(safe-area-inset-bottom));
+    z-index: 15;
+    margin: 0;
+    border-radius: 999px;
+    padding: 16px 30px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  }
+  button {
+    background: var(--color-green);
+    color: #fff;
+    border: none;
+    padding: 13px 22px;
+    border-radius: var(--radius-md);
+    font-size: 15px;
+    font-weight: 600;
+    margin-right: 8px;
+    margin-bottom: 12px;
+    transition: opacity 0.15s;
+  }
+  button:active { opacity: 0.8; }
+  button.secondary { background: var(--color-bg); color: var(--color-text-primary); border: 0.5px solid var(--color-border-md); }
+  button.danger { background: var(--color-danger); }
+  button:disabled { background: #999; }
+  #micBtn.recording { background: var(--color-danger); }
+
+  textarea, input[type="text"] {
+    width: 100%;
+    max-width: 480px;
+    font-size: 15px;
+    line-height: 1.7;
+    padding: 12px;
+    border-radius: var(--radius-md);
+    border: 0.5px solid var(--color-border-md);
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    display: block;
+    margin-bottom: 8px;
+  }
+  textarea { min-height: 100px; }
+
+  #editPanel { display: none; }
+  canvas { display: none; }
+
+  .spot-card, .spot-pick {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    background: var(--color-bg);
+    border: 0.5px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 10px;
+    margin-bottom: 8px;
+    max-width: 480px;
+  }
+  .spot-card img, .spot-pick img { width: 70px; height: 70px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+  .spot-info, .spot-pick .info { font-size: 12px; color: var(--color-text-secondary); line-height: 1.6; overflow: hidden; }
+  .spot-info .memo, .spot-pick .info .memo { color: var(--color-text-primary); font-size: 13px; margin-top: 4px; }
+  .spot-pick input[type="checkbox"], .spot-card input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--color-green); }
+  .spot-thumb { position: relative; flex-shrink: 0; }
+  .spot-number {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    background: var(--color-green);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 999px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  /* ルート地図上の番号ピン(Leaflet divIcon) */
+  .spot-pin {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--color-green);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    border: 2px solid var(--color-bg);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  }
+
+  /* 散歩の開始(S)・終了(G)地点マーカー */
+  .walk-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    border: 2px solid var(--color-bg);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  }
+  .walk-marker.start { background: #2a6fdb; }
+  .walk-marker.end { background: var(--color-danger); }
+
+  .album-card {
+    background: var(--color-bg);
+    border: 0.5px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 14px;
+    margin-bottom: 14px;
+    max-width: 480px;
+  }
+  .album-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .album-meta { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 10px; }
+  .album-photos {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .album-photos img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+
+  #emptySpots, #emptyAlbums, #emptyWalks {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    max-width: 480px;
+    padding: 20px 16px;
+    text-align: center;
+    background: var(--color-bg);
+    border: 0.5px dashed var(--color-border-md);
+    border-radius: var(--radius-lg);
+  }
+
+  #routeMap {
+    height: 300px;
+    width: 100%;
+    max-width: 480px;
+    border-radius: var(--radius-lg);
+    margin-bottom: 12px;
+    border: 0.5px solid var(--color-border);
+  }
+  #routeStatus {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    margin-bottom: 12px;
+  }
+  .walk-card {
+    background: var(--color-bg);
+    border: 0.5px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    max-width: 480px;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+  }
+  .walk-card .walk-title { color: var(--color-text-primary); font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .walk-card.selected { outline: 2px solid var(--color-green); }
+
+  /* ---- 下部タブバー ---- */
+  .tabbar {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    display: flex;
+    background: var(--color-bg);
+    border-top: 0.5px solid var(--color-border);
+    padding: 6px 8px max(6px, env(safe-area-inset-bottom));
+    gap: 4px;
+  }
+  .tabbar button {
+    flex: 1;
+    margin: 0;
+    background: none;
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-md);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 8px 4px;
+  }
+  .tabbar button:active { opacity: 1; background: var(--color-bg-secondary); }
+  .tabbar button.active { color: var(--color-green-text); font-weight: 700; background: var(--color-green-bg); }
+
+  /* ---- アルバム詳細・写真拡大のオーバーレイ ---- */
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: var(--color-bg);
+    overflow-y: auto;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  }
+  .overlay-title { font-size: 17px; font-weight: 700; margin: 10px 0 2px; }
+  .overlay-meta { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 12px; }
+
+  #albumDetailMap {
+    width: 100%;
+    max-width: 480px;
+    height: 50vh;
+    min-height: 320px;
+    border-radius: var(--radius-lg);
+    border: 0.5px solid var(--color-border);
+    margin-bottom: 14px;
+  }
+  .album-photos-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    max-width: 480px;
+  }
+  .album-photos-grid .spot-thumb { width: 100%; aspect-ratio: 1; cursor: pointer; }
+  .album-photos-grid img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; }
+
+  /* 印刷(PDF化)専用のメモ一覧。画面では非表示にしておき、@media printでだけ表示する */
+  .print-only { display: none; }
+  .print-entry { display: flex; gap: 12px; margin-bottom: 14px; max-width: 480px; }
+  .print-entry img { width: 90px; height: 90px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+  .print-entry .print-info { font-size: 13px; line-height: 1.6; }
+  .print-entry .print-info .memo { margin-top: 4px; }
+
+  @media print {
+    body > *:not(#albumDetailOverlay) { display: none !important; }
+    #albumDetailOverlay {
+      display: block !important;
+      position: static;
+      overflow: visible;
+      padding: 0;
+    }
+    .no-print { display: none !important; }
+    .print-only { display: block !important; }
+    #albumDetailMap { max-width: 100%; width: 100%; height: 420px; }
+  }
+
+  #photoDetailImg {
+    width: 100%;
+    max-width: 480px;
+    border-radius: var(--radius-lg);
+    margin: 10px 0 14px;
+    display: block;
+  }
+  #photoDetailInfo { font-size: 14px; line-height: 1.8; max-width: 480px; }
+</style>
+</head>
+<body>
+
+<header class="appbar">
+  <h1>街歩きログ</h1>
+  <p class="tagline">街歩きの記録アプリ</p>
+</header>
+
+<!-- ============ 撮るタブ ============ -->
+<section id="tab-record" class="tab-panel">
+  <p id="status">「撮る」タブを開くとカメラが起動します。</p>
+  <span id="gpsStatus" class="waiting">位置情報 取得中…</span>
+
+  <div id="cameraPanel">
+    <video id="video" autoplay playsinline muted></video>
+    <button id="shootBtn" disabled>この場所を撮影する</button>
+  </div>
+
+  <div id="editPanel">
+    <img id="capturedPhoto" alt="撮影した写真" />
+    <p id="editInfo" style="font-size:13px; color:var(--color-text-secondary); margin-bottom:8px;"></p>
+
+    <button id="micBtn">音声入力開始</button>
+    <textarea id="memo" placeholder="メモ内容(音声入力 or 手入力)"></textarea>
+
+    <div>
+      <button id="saveSpotBtn">この記録を保存</button>
+      <button id="retakeBtn" class="secondary">撮り直す</button>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+</section>
+
+<!-- ============ ルートタブ ============ -->
+<section id="tab-route" class="tab-panel active">
+  <p id="routeStatus">「散歩スタート」を押すと、歩いた道を記録します。</p>
+  <button id="walkToggleBtn">散歩スタート</button>
+  <div id="routeMap"></div>
+
+  <h2>過去の散歩</h2>
+  <div id="walkList"></div>
+  <p id="emptyWalks">まだ記録した散歩ルートがありません。</p>
+</section>
+
+<!-- ============ 記録一覧タブ ============ -->
+<section id="tab-list" class="tab-panel">
+  <h2>記録した場所(<span id="spotCount">0</span>件)</h2>
+  <div id="spotList"></div>
+  <p id="emptySpots">まだ記録がありません。「撮る」タブから記録してください。</p>
+  <div>
+    <button id="deleteSelectedBtn" class="danger">選択した記録を削除</button>
+    <button id="clearAllBtn" class="secondary">全記録をクリア</button>
+  </div>
+</section>
+
+<!-- ============ アルバムタブ ============ -->
+<section id="tab-album" class="tab-panel">
+  <h2>記録から選ぶ</h2>
+  <p id="spotIntro" style="font-size:13px; color:var(--color-text-secondary); margin-bottom:12px;"></p>
+  <div id="spotPickList"></div>
+
+  <h2>タイトルをつけて作成</h2>
+  <input type="text" id="albumTitle" placeholder="例: ○○町歴史散歩" />
+  <button id="createAlbumBtn">選択した写真でアルバムを作成</button>
+
+  <h2>作成済みアルバム</h2>
+  <div id="albumList"></div>
+  <p id="emptyAlbums">まだアルバムがありません。</p>
+</section>
+
+<!-- ============ 下部タブバー ============ -->
+<nav class="tabbar">
+  <button data-tab="route" class="active">🗺 ルート</button>
+  <button data-tab="record">📷 撮る</button>
+  <button data-tab="list">📋 記録一覧</button>
+  <button data-tab="album">📖 アルバム</button>
+</nav>
+
+<!-- ============ アルバム詳細(ルート+写真グリッド) ============ -->
+<div id="albumDetailOverlay" class="overlay">
+  <button id="albumDetailBackBtn" class="secondary no-print">← アルバム一覧に戻る</button>
+  <button id="albumPrintBtn" class="secondary no-print">🖨️ PDFで印刷する</button>
+  <h2 id="albumDetailTitle" class="overlay-title"></h2>
+  <p id="albumDetailMeta" class="overlay-meta"></p>
+  <div id="albumDetailMap"></div>
+  <div id="albumDetailPhotos" class="album-photos-grid no-print"></div>
+
+  <!-- 画面には出さず、印刷(PDF化)時だけ表示する、メモを読める形にした一覧 -->
+  <div id="albumDetailPrintList" class="print-only"></div>
+</div>
+
+<!-- ============ 写真拡大表示 ============ -->
+<div id="photoDetailOverlay" class="overlay">
+  <button id="photoDetailBackBtn" class="secondary">← 戻る</button>
+  <img id="photoDetailImg" alt="撮影した写真" />
+  <p id="photoDetailInfo"></p>
+</div>
+
+<script>
+  const STORAGE_KEY = 'machilog_walk_demo_spots';
+  const ALBUMS_KEY = 'machilog_albums_demo';
+  const WALKS_KEY = 'machilog_walks_demo';
+
+  let spots = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  let albums = JSON.parse(localStorage.getItem(ALBUMS_KEY) || '[]');
+  let walks = JSON.parse(localStorage.getItem(WALKS_KEY) || '[]');
+
+  // 番号付けを追加する前に保存された記録には#番号がないため、記録した順番で振り直す
+  if (spots.some((s) => !s.number)) {
+    spots.forEach((s, i) => { s.number = i + 1; });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(spots));
+  }
+
+  // ============ タブ切り替え ============
+  const tabButtons = document.querySelectorAll('.tabbar button');
+  const tabPanels = {
+    record: document.getElementById('tab-record'),
+    route: document.getElementById('tab-route'),
+    list: document.getElementById('tab-list'),
+    album: document.getElementById('tab-album')
+  };
+  let cameraStarted = false;
+
+  tabButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+
+      tabButtons.forEach((b) => b.classList.toggle('active', b === btn));
+      Object.entries(tabPanels).forEach(([key, panel]) => {
+        panel.classList.toggle('active', key === target);
+      });
+
+      // 「撮る」タブにいる間だけカメラを起動し、離れたら停止する(発熱・電池消耗を抑えるため)
+      if (target === 'record') {
+        if (!cameraStarted) startCamera();
+      } else {
+        if (cameraStarted) stopCamera();
+      }
+      // 一覧・アルバムタブは開くたびに最新のデータで再描画する
+      if (target === 'list') renderSpots();
+      if (target === 'album') { renderSpotPicks(); renderAlbums(); }
+      // ルートタブは、地図(Leaflet)が非表示状態では正しく初期化できないため、表示された時に初期化・サイズ再計算する
+      if (target === 'route') {
+        initRouteMapIfNeeded();
+        setTimeout(() => routeMap.invalidateSize(), 0);
+        renderWalks();
+        renderSpotMarkers();
+      }
+    });
+  });
+
+  // ============ 撮るタブ: カメラ ============
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const capturedPhoto = document.getElementById('capturedPhoto');
+  const cameraPanel = document.getElementById('cameraPanel');
+  const editPanel = document.getElementById('editPanel');
+  const shootBtn = document.getElementById('shootBtn');
+  const retakeBtn = document.getElementById('retakeBtn');
+  const saveSpotBtn = document.getElementById('saveSpotBtn');
+  const memo = document.getElementById('memo');
+  const micBtn = document.getElementById('micBtn');
+  const status = document.getElementById('status');
+  const gpsStatus = document.getElementById('gpsStatus');
+  const editInfo = document.getElementById('editInfo');
+
+  let lastPosition = null;
+  let pendingPhotoDataUrl = null;
+  let pendingPosition = null;
+  let pendingTimestamp = null;
+  let pendingNumber = null;
+  let cameraStream = null;
+
+  // 記録済みスポットの最大番号+1を返す(削除があっても番号が重複しないようにするため)
+  function nextSpotNumber() {
+    return spots.reduce((max, s) => Math.max(max, s.number || 0), 0) + 1;
+  }
+
+  function startCamera() {
+    cameraStarted = true;
+    status.textContent = 'カメラを起動しています…';
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false
+    }).then((stream) => {
+      cameraStream = stream;
+      video.srcObject = stream;
+      status.textContent = 'カメラが起動しました。撮影ボタンを押してください。';
+      shootBtn.disabled = false;
+    }).catch((err) => {
+      status.textContent = 'カメラを起動できませんでした: ' + err.message;
+    });
+  }
+
+  // 他のタブを見ている間もカメラを起動したままだと発熱・電池消耗の原因になるため、
+  // 「撮る」タブを離れたらカメラのハードウェアごと完全に停止する
+  function stopCamera() {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      cameraStream = null;
+    }
+    video.srcObject = null;
+    cameraStarted = false;
+    shootBtn.disabled = true;
+  }
+
+  // カメラは「撮る」タブが最初に開かれた時だけ起動する(初期表示はルートタブのため)
+
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(
+      (pos) => {
+        lastPosition = pos.coords;
+        gpsStatus.textContent = '位置情報 取得済み (精度 約' + Math.round(pos.coords.accuracy) + 'm)';
+        gpsStatus.classList.remove('waiting');
+        maybeAddRoutePoint(pos.coords);
+        centerMapOnFirstFixIfNeeded(pos.coords);
+      },
+      (err) => { gpsStatus.textContent = '位置情報 取得失敗: ' + err.message; },
+      { enableHighAccuracy: true }
+    );
+  } else {
+    gpsStatus.textContent = '位置情報 利用不可';
+  }
+
+  shootBtn.addEventListener('click', () => {
+    const maxWidth = 800;
+    const scale = Math.min(1, maxWidth / video.videoWidth);
+    canvas.width = video.videoWidth * scale;
+    canvas.height = video.videoHeight * scale;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    pendingPhotoDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+    pendingPosition = lastPosition;
+    pendingTimestamp = new Date().toISOString();
+    pendingNumber = nextSpotNumber();
+
+    capturedPhoto.src = pendingPhotoDataUrl;
+    editInfo.textContent = 'この記録は地図上で #' + pendingNumber + ' として表示されます / ' +
+      (pendingPosition
+        ? '緯度 ' + pendingPosition.latitude.toFixed(6) + ' / 経度 ' + pendingPosition.longitude.toFixed(6)
+        : '位置情報は取得できませんでした');
+    memo.value = '';
+
+    cameraPanel.style.display = 'none';
+    editPanel.style.display = 'block';
+    status.textContent = '写真を確認して、必要ならメモを入力・音声入力してください。';
+  });
+
+  retakeBtn.addEventListener('click', () => {
+    cameraPanel.style.display = 'block';
+    editPanel.style.display = 'none';
+    status.textContent = 'カメラが起動しました。撮影ボタンを押してください。';
+  });
+
+  saveSpotBtn.addEventListener('click', () => {
+    const spot = {
+      id: Date.now(),
+      number: pendingNumber,
+      timestamp: pendingTimestamp,
+      lat: pendingPosition ? pendingPosition.latitude : null,
+      lng: pendingPosition ? pendingPosition.longitude : null,
+      photo: pendingPhotoDataUrl,
+      memo: memo.value
+    };
+    spots.push(spot);
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(spots));
+    } catch (e) {
+      status.textContent = '保存容量がいっぱいの可能性があります: ' + e.message;
+    }
+
+    if (routeMap) renderSpotMarkers(); // 地図が既に開かれていれば、新しいピンをすぐ反映する
+
+    cameraPanel.style.display = 'block';
+    editPanel.style.display = 'none';
+    status.textContent = '記録を保存しました(#' + spot.number + ')。次の場所へ進みましょう。';
+  });
+
+  // ---- 音声入力 ----
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    micBtn.disabled = true;
+    micBtn.textContent = '音声入力 非対応';
+  } else {
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ja-JP';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    let isListening = false;
+    let baseText = '';
+
+    recognition.addEventListener('start', () => {
+      isListening = true;
+      baseText = memo.value;
+      micBtn.textContent = '音声入力停止';
+      micBtn.classList.add('recording');
+    });
+
+    recognition.addEventListener('result', (event) => {
+      let finalChunk = '';
+      let interimText = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) finalChunk += transcript;
+        else interimText += transcript;
+      }
+      if (finalChunk) baseText += finalChunk;
+      memo.value = baseText + interimText;
+    });
+
+    recognition.addEventListener('error', (event) => {
+      status.textContent = '音声認識エラー: ' + event.error;
+    });
+
+    recognition.addEventListener('end', () => {
+      isListening = false;
+      micBtn.textContent = '音声入力開始';
+      micBtn.classList.remove('recording');
+    });
+
+    micBtn.addEventListener('click', () => {
+      if (isListening) recognition.stop();
+      else recognition.start();
+    });
+  }
+
+  // ============ ルートタブ: 散歩ルート記録 ============
+  const walkToggleBtn = document.getElementById('walkToggleBtn');
+  const routeStatus = document.getElementById('routeStatus');
+  const walkList = document.getElementById('walkList');
+  const emptyWalks = document.getElementById('emptyWalks');
+
+  const IN_PROGRESS_KEY = 'machilog_current_walk_demo';
+
+  let routeMap = null;
+  let routePolyline = null;
+  let spotMarkersLayer = null;
+  let walkMarkersLayer = null;
+  let currentWalk = null; // 記録中の散歩 { id, startedAt, path: [{lat,lng,t}] }
+  let selectedWalkId = null; // 一覧から選んで地図表示中の過去の散歩
+  let hasCenteredOnCurrentLocation = false;
+
+  // 地図はページ読み込み時点(まだGPSが取れていない)に東京駅付近で初期化されるため、
+  // 最初の現在地が取れた時点で一度だけ地図をそこへ移動する(記録中・過去の散歩表示中は動かさない)
+  function centerMapOnFirstFixIfNeeded(coords) {
+    if (hasCenteredOnCurrentLocation || !routeMap || currentWalk || selectedWalkId) return;
+    hasCenteredOnCurrentLocation = true;
+    routeMap.setView([coords.latitude, coords.longitude], 16);
+  }
+
+  // 記録中の散歩は地点を追加するたびに保存しておく。Safariがタブを破棄してページが
+  // 再読み込みされても、メモリ上だけにあったcurrentWalkが消えてしまわないようにするため
+  function saveInProgressWalk() {
+    if (currentWalk) {
+      localStorage.setItem(IN_PROGRESS_KEY, JSON.stringify(currentWalk));
+    } else {
+      localStorage.removeItem(IN_PROGRESS_KEY);
+    }
+  }
+
+  // 2点間の距離をメートルで計算(緯度経度から距離を出す定番の式)
+  function haversineMeters(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const toRad = (d) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function pathDistance(path) {
+    let total = 0;
+    for (let i = 1; i < path.length; i++) {
+      total += haversineMeters(path[i - 1].lat, path[i - 1].lng, path[i].lat, path[i].lng);
+    }
+    return total;
+  }
+
+  function formatDistance(meters) {
+    return meters >= 1000 ? (meters / 1000).toFixed(2) + 'km' : Math.round(meters) + 'm';
+  }
+
+  // 地図(Leaflet)は非表示のdivに対して初期化すると崩れるため、ルートタブが最初に開かれた時に初期化する
+  function initRouteMapIfNeeded() {
+    if (routeMap) return;
+    routeMap = L.map('routeMap').setView([35.681236, 139.767125], 15); // 初期表示は東京駅付近
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(routeMap);
+    routePolyline = L.polyline([], { color: '#2a7a4b' }).addTo(routeMap);
+    spotMarkersLayer = L.layerGroup().addTo(routeMap);
+    walkMarkersLayer = L.layerGroup().addTo(routeMap);
+    renderSpotMarkers();
+
+    if (currentWalk && currentWalk.path.length > 0) {
+      // 復元された記録中の散歩があれば、その軌跡を地図にも反映する(まだ終了していないのでSのみ)
+      const latlngs = currentWalk.path.map((p) => [p.lat, p.lng]);
+      routePolyline.setLatLngs(latlngs);
+      renderWalkMarkers(currentWalk.path, false);
+      routeMap.fitBounds(routePolyline.getBounds(), { padding: [20, 20] });
+    } else if (lastPosition) {
+      routeMap.setView([lastPosition.latitude, lastPosition.longitude], 16);
+    }
+  }
+
+  // 散歩の開始地点(S)・終了地点(G)を地図上にマーカーで示す。includeEndがfalseの間は記録中でまだ終了していない
+  function renderWalkMarkers(path, includeEnd) {
+    if (!walkMarkersLayer) return;
+    walkMarkersLayer.clearLayers();
+    if (!path || path.length === 0) return;
+
+    const startIcon = L.divIcon({
+      className: 'walk-marker start',
+      html: 'S',
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    });
+    L.marker([path[0].lat, path[0].lng], { icon: startIcon }).addTo(walkMarkersLayer);
+
+    if (includeEnd && path.length > 1) {
+      const endIcon = L.divIcon({
+        className: 'walk-marker end',
+        html: 'G',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      });
+      const last = path[path.length - 1];
+      L.marker([last.lat, last.lng], { icon: endIcon }).addTo(walkMarkersLayer);
+    }
+  }
+
+  // 記録中の散歩に、意味のある間隔でだけ地点を追加する(密集しすぎないよう間引く)
+  function maybeAddRoutePoint(coords) {
+    if (!currentWalk) return;
+    const now = Date.now();
+    const last = currentWalk.path[currentWalk.path.length - 1];
+
+    if (last) {
+      const distFromLast = haversineMeters(last.lat, last.lng, coords.latitude, coords.longitude);
+      const timeSinceLast = now - last.t;
+      // 10m以上動く、または15秒以上経過した場合だけ新しい点を追加する
+      if (distFromLast < 10 && timeSinceLast < 15000) return;
+    }
+
+    currentWalk.path.push({ lat: coords.latitude, lng: coords.longitude, t: now });
+    saveInProgressWalk();
+    updateRouteLive();
+  }
+
+  function updateRouteLive() {
+    const dist = pathDistance(currentWalk.path);
+    routeStatus.textContent = '記録中… ' + currentWalk.path.length + '地点 / 距離 約' + formatDistance(dist);
+
+    if (routeMap) {
+      const latlngs = currentWalk.path.map((p) => [p.lat, p.lng]);
+      routePolyline.setLatLngs(latlngs);
+      renderWalkMarkers(currentWalk.path, false);
+      if (latlngs.length > 0) routeMap.panTo(latlngs[latlngs.length - 1]);
+    }
+  }
+
+  walkToggleBtn.addEventListener('click', () => {
+    initRouteMapIfNeeded();
+
+    if (!currentWalk) {
+      // 散歩スタート
+      currentWalk = { id: Date.now(), startedAt: new Date().toISOString(), path: [] };
+      if (lastPosition) {
+        currentWalk.path.push({ lat: lastPosition.latitude, lng: lastPosition.longitude, t: Date.now() });
+      }
+      routePolyline.setLatLngs([]);
+      walkToggleBtn.textContent = '散歩終了';
+      walkToggleBtn.classList.add('danger');
+      saveInProgressWalk();
+      updateRouteLive();
+    } else {
+      // 散歩終了 → 保存
+      if (currentWalk.path.length < 2) {
+        alert('記録された地点が少ないため保存しません(移動しながらもう一度お試しください)。');
+      } else {
+        const walk = {
+          id: currentWalk.id,
+          startedAt: currentWalk.startedAt,
+          endedAt: new Date().toISOString(),
+          path: currentWalk.path,
+          distance: pathDistance(currentWalk.path)
+        };
+        walks.push(walk);
+        localStorage.setItem(WALKS_KEY, JSON.stringify(walks));
+        renderWalkMarkers(walk.path, true); // 終了したのでS・G両方を表示する
+      }
+      currentWalk = null;
+      saveInProgressWalk(); // currentWalkがnullになったので、記録中データを消す
+      walkToggleBtn.textContent = '散歩スタート';
+      walkToggleBtn.classList.remove('danger');
+      routeStatus.textContent = '「散歩スタート」を押すと、歩いた道を記録します。';
+      renderWalks();
+    }
+  });
+
+  // ページを開いた時点で、前回記録中だった散歩(中断された散歩)があれば復元する
+  function restoreInProgressWalk() {
+    const saved = localStorage.getItem(IN_PROGRESS_KEY);
+    if (!saved) return;
+
+    currentWalk = JSON.parse(saved);
+    walkToggleBtn.textContent = '散歩終了';
+    walkToggleBtn.classList.add('danger');
+    updateRouteLive(); // 記録中の地点数・距離を表示する(routeStatusはここで更新される)
+  }
+  restoreInProgressWalk();
+
+  // 番号ピンを地図上に作る共通処理。タップ→写真付きのミニポップアップ→その写真をタップで拡大表示、という2段階にする
+  function addSpotMarker(target, spot) {
+    const icon = L.divIcon({
+      className: 'spot-pin',
+      html: '<span>' + spot.number + '</span>',
+      iconSize: [26, 26],
+      iconAnchor: [13, 13]
+    });
+    const marker = L.marker([spot.lat, spot.lng], { icon }).addTo(target);
+    const time = new Date(spot.timestamp).toLocaleString('ja-JP');
+    marker.bindPopup(
+      '<div style="font-size:12px; text-align:center;">' +
+        '<img src="' + spot.photo + '" class="popup-photo" style="width:100%;max-width:160px;border-radius:6px;margin-bottom:4px;display:block;cursor:pointer;" />' +
+        '#' + spot.number + ' ・ ' + time + '<br>' +
+        (spot.memo ? escapeHtml(spot.memo).slice(0, 60) : '(メモなし)') +
+      '</div>'
+    );
+    // 同じ写真が複数の地図(ルート・アルバム詳細)に同時に存在しうるため、id参照ではなく
+    // このポップアップのDOM要素の中だけを探すことで、他の地図の要素と衝突しないようにする
+    marker.on('popupopen', (e) => {
+      const img = e.popup.getElement().querySelector('.popup-photo');
+      if (img) img.addEventListener('click', () => openSpotPhotoDetail(spot));
+    });
+    return marker;
+  }
+
+  // 撮影した写真の場所を、番号付きピンとして地図に表示する
+  function renderSpotMarkers() {
+    if (!spotMarkersLayer) return;
+    spotMarkersLayer.clearLayers();
+    spots.filter((s) => s.lat != null).forEach((spot) => addSpotMarker(spotMarkersLayer, spot));
+  }
+
+  function showWalkOnMap(walk) {
+    selectedWalkId = walk.id;
+    const latlngs = walk.path.map((p) => [p.lat, p.lng]);
+    routePolyline.setLatLngs(latlngs);
+    renderWalkMarkers(walk.path, true);
+    if (latlngs.length > 0) {
+      routeMap.fitBounds(routePolyline.getBounds(), { padding: [20, 20] });
+    }
+    renderWalks();
+  }
+
+  function renderWalks() {
+    emptyWalks.style.display = walks.length === 0 ? 'block' : 'none';
+    walkList.innerHTML = '';
+
+    [...walks].reverse().forEach((walk) => {
+      const card = document.createElement('div');
+      card.className = 'walk-card' + (walk.id === selectedWalkId ? ' selected' : '');
+      const started = new Date(walk.startedAt).toLocaleString('ja-JP');
+      card.innerHTML =
+        '<div class="walk-title">' + started + '</div>' +
+        '距離 約' + formatDistance(walk.distance) + ' / ' + walk.path.length + '地点(タップで地図表示)';
+      card.addEventListener('click', () => showWalkOnMap(walk));
+      walkList.appendChild(card);
+    });
+  }
+
+  // ============ 記録一覧タブ ============
+  const spotList = document.getElementById('spotList');
+  const spotCount = document.getElementById('spotCount');
+  const emptySpots = document.getElementById('emptySpots');
+  const clearAllBtn = document.getElementById('clearAllBtn');
+  const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+
+  function renderSpots() {
+    spotCount.textContent = spots.length;
+    emptySpots.style.display = spots.length === 0 ? 'block' : 'none';
+    spotList.innerHTML = '';
+
+    [...spots].reverse().forEach((spot) => {
+      const card = document.createElement('div');
+      card.className = 'spot-card';
+      const time = new Date(spot.timestamp).toLocaleString('ja-JP');
+      const locText = (spot.lat != null) ? spot.lat.toFixed(5) + ', ' + spot.lng.toFixed(5) : '位置情報なし';
+      card.innerHTML =
+        '<input type="checkbox" class="spot-select" value="' + spot.id + '" />' +
+        '<div class="spot-thumb">' +
+          '<img src="' + spot.photo + '" alt="記録した写真" />' +
+          '<span class="spot-number">#' + spot.number + '</span>' +
+        '</div>' +
+        '<div class="spot-info">' + time + '<br>' + locText +
+          '<div class="memo">' + (spot.memo ? escapeHtml(spot.memo) : '(メモなし)') + '</div>' +
+        '</div>';
+      spotList.appendChild(card);
+    });
+  }
+
+  deleteSelectedBtn.addEventListener('click', () => {
+    const checked = [...spotList.querySelectorAll('.spot-select:checked')].map((cb) => Number(cb.value));
+    if (checked.length === 0) { alert('削除する記録を選んでください。'); return; }
+    if (!confirm(checked.length + '件の記録を削除します。よろしいですか？')) return;
+
+    spots = spots.filter((s) => !checked.includes(s.id));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(spots));
+    renderSpots();
+  });
+
+  clearAllBtn.addEventListener('click', () => {
+    if (!confirm('全ての記録を削除します。よろしいですか？')) return;
+    spots = [];
+    localStorage.removeItem(STORAGE_KEY);
+    renderSpots();
+  });
+
+  // ============ アルバムタブ ============
+  const spotPickList = document.getElementById('spotPickList');
+  const spotIntro = document.getElementById('spotIntro');
+  const albumTitle = document.getElementById('albumTitle');
+  const createAlbumBtn = document.getElementById('createAlbumBtn');
+  const albumList = document.getElementById('albumList');
+  const emptyAlbums = document.getElementById('emptyAlbums');
+
+  function renderSpotPicks() {
+    const ordered = [...spots].reverse();
+    spotIntro.textContent = spots.length + '件の記録があります。アルバムに入れたい写真を選んでください。';
+    spotPickList.innerHTML = '';
+    ordered.forEach((spot) => {
+      const row = document.createElement('label');
+      row.className = 'spot-pick';
+      const time = new Date(spot.timestamp).toLocaleString('ja-JP');
+      row.innerHTML =
+        '<input type="checkbox" value="' + spot.id + '" />' +
+        '<div class="spot-thumb">' +
+          '<img src="' + spot.photo + '" alt="記録した写真" />' +
+          '<span class="spot-number">#' + spot.number + '</span>' +
+        '</div>' +
+        '<div class="info">' + time +
+          '<div class="memo">' + (spot.memo ? escapeHtml(spot.memo).slice(0, 40) : '(メモなし)') + '</div>' +
+        '</div>';
+      spotPickList.appendChild(row);
+    });
+  }
+
+  createAlbumBtn.addEventListener('click', () => {
+    const title = albumTitle.value.trim();
+    if (!title) { alert('アルバムのタイトルを入力してください。'); return; }
+
+    const checked = [...spotPickList.querySelectorAll('input[type="checkbox"]:checked')]
+      .map((cb) => Number(cb.value));
+    if (checked.length === 0) { alert('写真を1枚以上選んでください。'); return; }
+
+    const selectedSpots = spots.filter((s) => checked.includes(s.id));
+    const album = {
+      id: Date.now(),
+      title: title,
+      createdAt: new Date().toISOString(),
+      spots: selectedSpots
+    };
+    albums.push(album);
+    localStorage.setItem(ALBUMS_KEY, JSON.stringify(albums));
+
+    albumTitle.value = '';
+    renderSpotPicks();
+    renderAlbums();
+  });
+
+  function renderAlbums() {
+    emptyAlbums.style.display = albums.length === 0 ? 'block' : 'none';
+    albumList.innerHTML = '';
+
+    [...albums].reverse().forEach((album) => {
+      const card = document.createElement('div');
+      card.className = 'album-card';
+      const created = new Date(album.createdAt).toLocaleString('ja-JP');
+      const photosHtml = album.spots.map((s) =>
+        '<img src="' + s.photo + '" alt="' + escapeHtml(album.title) + '" />'
+      ).join('');
+
+      card.innerHTML =
+        '<h3>' + escapeHtml(album.title) + '</h3>' +
+        '<div class="album-meta">作成日: ' + created + ' / 写真 ' + album.spots.length + '枚</div>' +
+        '<div class="album-photos">' + photosHtml + '</div>' +
+        '<button data-view-id="' + album.id + '">このアルバムを見る</button>' +
+        '<button class="danger" data-delete-id="' + album.id + '">このアルバムを削除</button>';
+      albumList.appendChild(card);
+    });
+
+    albumList.querySelectorAll('button[data-view-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const album = albums.find((a) => a.id === Number(btn.dataset.viewId));
+        if (album) showAlbumDetail(album);
+      });
+    });
+
+    albumList.querySelectorAll('button[data-delete-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.dataset.deleteId);
+        if (!confirm('このアルバムを削除します。よろしいですか？')) return;
+        albums = albums.filter((a) => a.id !== id);
+        localStorage.setItem(ALBUMS_KEY, JSON.stringify(albums));
+        renderAlbums();
+      });
+    });
+  }
+
+  // ============ アルバム詳細(ルート・写真グリッド・拡大表示) ============
+  const albumDetailOverlay = document.getElementById('albumDetailOverlay');
+  const albumDetailTitle = document.getElementById('albumDetailTitle');
+  const albumDetailMeta = document.getElementById('albumDetailMeta');
+  const albumDetailPhotos = document.getElementById('albumDetailPhotos');
+  const albumDetailPrintList = document.getElementById('albumDetailPrintList');
+  const albumDetailBackBtn = document.getElementById('albumDetailBackBtn');
+  const albumPrintBtn = document.getElementById('albumPrintBtn');
+  const photoDetailOverlay = document.getElementById('photoDetailOverlay');
+  const photoDetailImg = document.getElementById('photoDetailImg');
+  const photoDetailInfo = document.getElementById('photoDetailInfo');
+  const photoDetailBackBtn = document.getElementById('photoDetailBackBtn');
+
+  albumPrintBtn.addEventListener('click', () => {
+    window.print();
+  });
+
+  let albumDetailMap = null;
+  let albumMapBounds = null;
+
+  // アルバムの写真の時刻が、記録済みの散歩(walks)のどれとほぼ重なるかを調べて、
+  // 一致する散歩があればその実際の歩行ルートを地図に重ねて表示する
+  function findMatchingWalk(album) {
+    let bestWalk = null;
+    let bestCount = 0;
+    walks.forEach((walk) => {
+      const start = new Date(walk.startedAt).getTime();
+      const end = new Date(walk.endedAt).getTime();
+      const count = album.spots.filter((s) => {
+        const t = new Date(s.timestamp).getTime();
+        return t >= start && t <= end;
+      }).length;
+      if (count > bestCount) { bestCount = count; bestWalk = walk; }
+    });
+    return bestCount > 0 ? bestWalk : null;
+  }
+
+  function showAlbumDetail(album) {
+    albumDetailTitle.textContent = album.title;
+    const created = new Date(album.createdAt).toLocaleString('ja-JP');
+    albumDetailMeta.textContent = '作成日: ' + created + ' / 写真 ' + album.spots.length + '枚';
+
+    albumDetailPhotos.innerHTML = '';
+    albumDetailPrintList.innerHTML = '';
+    album.spots.forEach((spot) => {
+      const thumb = document.createElement('div');
+      thumb.className = 'spot-thumb album-detail-thumb';
+      thumb.innerHTML =
+        '<img src="' + spot.photo + '" alt="記録した写真" />' +
+        '<span class="spot-number">#' + spot.number + '</span>';
+      thumb.addEventListener('click', () => openSpotPhotoDetail(spot));
+      albumDetailPhotos.appendChild(thumb);
+
+      // 印刷用は、サムネイルの番号バッジだけでなくメモの全文が読めるよう一覧形式にする
+      const time = new Date(spot.timestamp).toLocaleString('ja-JP');
+      const entry = document.createElement('div');
+      entry.className = 'print-entry';
+      entry.innerHTML =
+        '<img src="' + spot.photo + '" alt="記録した写真" />' +
+        '<div class="print-info">' +
+          '<strong>#' + spot.number + '</strong> ・ ' + time +
+          '<div class="memo">' + (spot.memo ? escapeHtml(spot.memo) : '(メモなし)') + '</div>' +
+        '</div>';
+      albumDetailPrintList.appendChild(entry);
+    });
+
+    // 地図のコンテナが display:none のまま初期化するとサイズを0として計算され、
+    // タイルの表示が崩れるため、オーバーレイを表示してから地図を作る
+    albumDetailOverlay.style.display = 'block';
+
+    // 詳細を開くたびに地図を作り直す(アルバムごとに表示内容が大きく変わるため)
+    if (albumDetailMap) { albumDetailMap.remove(); albumDetailMap = null; }
+    albumDetailMap = L.map('albumDetailMap');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(albumDetailMap);
+
+    const bounds = [];
+    const matchingWalk = findMatchingWalk(album);
+    if (matchingWalk) {
+      const routeLatLngs = matchingWalk.path.map((p) => [p.lat, p.lng]);
+      L.polyline(routeLatLngs, { color: '#2a7a4b', weight: 3, opacity: 0.6 }).addTo(albumDetailMap);
+      bounds.push(...routeLatLngs);
+
+      const startIcon = L.divIcon({ className: 'walk-marker start', html: 'S', iconSize: [24, 24], iconAnchor: [12, 12] });
+      L.marker(routeLatLngs[0], { icon: startIcon }).addTo(albumDetailMap);
+      if (routeLatLngs.length > 1) {
+        const endIcon = L.divIcon({ className: 'walk-marker end', html: 'G', iconSize: [24, 24], iconAnchor: [12, 12] });
+        L.marker(routeLatLngs[routeLatLngs.length - 1], { icon: endIcon }).addTo(albumDetailMap);
+      }
+    }
+
+    album.spots.filter((s) => s.lat != null).forEach((spot) => {
+      addSpotMarker(albumDetailMap, spot);
+      bounds.push([spot.lat, spot.lng]);
+    });
+
+    albumMapBounds = bounds;
+    albumDetailMap.invalidateSize();
+    fitAlbumMap(50);
+  }
+
+  // 画面表示用・印刷用でコンテナのサイズが異なるため、その都度呼び出して範囲を合わせ直せるようにする
+  function fitAlbumMap(paddingPx) {
+    if (!albumDetailMap || !albumMapBounds) return;
+    if (albumMapBounds.length > 1) {
+      // 写真だけに寄りすぎず、歩いたルート全体が見渡せるよう余白を取る(印刷時は狭めにして広く見せる)
+      albumDetailMap.fitBounds(albumMapBounds, { padding: [paddingPx, paddingPx], maxZoom: 17 });
+    } else if (albumMapBounds.length === 1) {
+      // 地点が1つだけだとfitBoundsの範囲がゼロになり表示が崩れるため、setViewを使う
+      albumDetailMap.setView(albumMapBounds[0], 16);
+    } else {
+      albumDetailMap.setView([35.681236, 139.767125], 15);
+    }
+  }
+
+  // 印刷開始時、地図コンテナのサイズが画面表示時と変わるため、Leafletにサイズ再計算と
+  // 範囲の再フィットをさせないと、印刷結果でルートが小さく偏って表示されてしまう
+  window.addEventListener('beforeprint', () => {
+    if (!albumDetailMap) return;
+    albumDetailMap.invalidateSize();
+    fitAlbumMap(20);
+  });
+  window.addEventListener('afterprint', () => {
+    if (!albumDetailMap) return;
+    albumDetailMap.invalidateSize();
+    fitAlbumMap(50);
+  });
+
+  albumDetailBackBtn.addEventListener('click', () => {
+    albumDetailOverlay.style.display = 'none';
+  });
+
+  // 番号ピン・写真グリッドどちらからでも呼べる共通の写真拡大表示
+  function openSpotPhotoDetail(spot) {
+    const time = new Date(spot.timestamp).toLocaleString('ja-JP');
+    photoDetailImg.src = spot.photo;
+    photoDetailInfo.innerHTML =
+      '<strong>#' + spot.number + '</strong> ・ ' + time + '<br>' +
+      (spot.memo ? escapeHtml(spot.memo) : '(メモなし)');
+    photoDetailOverlay.style.display = 'block';
+  }
+
+  photoDetailBackBtn.addEventListener('click', () => {
+    photoDetailOverlay.style.display = 'none';
+  });
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  renderSpots();
+
+  // 初期表示が「ルート」タブなので、地図もページ読み込み時点で初期化しておく
+  initRouteMapIfNeeded();
+  renderWalks();
+</script>
+
+</body>
+</html>
