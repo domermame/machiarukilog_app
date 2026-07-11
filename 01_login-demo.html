@@ -14,7 +14,7 @@
     padding: 16px;
   }
   h1 { font-size: 18px; margin-bottom: 12px; }
-  #status { font-size: 13px; color: #5f5e5a; margin-bottom: 12px; white-space: pre-wrap; }
+  #statusEl { font-size: 13px; color: #5f5e5a; margin-bottom: 12px; white-space: pre-wrap; }
   input {
     width: 100%;
     max-width: 320px;
@@ -44,7 +44,7 @@
 <body>
 
 <h1>ログイン最小サンプル</h1>
-<p id="status">メールアドレスとパスワードを入力してください。</p>
+<p id="statusEl">メールアドレスとパスワードを入力してください。</p>
 
 <div id="authPanel">
   <input type="email" id="email" placeholder="メールアドレス" />
@@ -63,9 +63,24 @@
   const SUPABASE_URL = 'https://noafgianpquhxovknwbv.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_wIGG8HcHOHxd7kNWedx0jw_bqO6y3MR';
 
-  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const statusEl = document.getElementById('statusEl');
 
-  const status = document.getElementById('status');
+  // ページ内のどこかで想定外のエラーが起きても、必ず画面に表示されるようにする
+  // (原因が分からず「何も起きない」ように見える状況を避けるため)
+  window.addEventListener('error', (e) => {
+    statusEl.textContent = '予期しないエラー: ' + e.message;
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    statusEl.textContent = '通信エラー: ' + (e.reason && e.reason.message ? e.reason.message : e.reason);
+  });
+
+  if (!window.supabase) {
+    statusEl.textContent = 'Supabaseライブラリの読み込みに失敗しました。通信環境を確認してください。';
+    throw new Error('supabase-js failed to load');
+  }
+
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  statusEl.textContent = '準備完了。メールアドレスとパスワードを入力してください。';
   const authPanel = document.getElementById('authPanel');
   const loggedInPanel = document.getElementById('loggedInPanel');
   const userInfo = document.getElementById('userInfo');
@@ -76,7 +91,7 @@
     authPanel.style.display = 'none';
     loggedInPanel.style.display = 'block';
     userInfo.textContent = 'ログイン中: ' + user.email;
-    status.textContent = '';
+    statusEl.textContent = '';
   }
 
   function showLoggedOut() {
@@ -90,37 +105,45 @@
   });
 
   document.getElementById('signUpBtn').addEventListener('click', async () => {
-    status.textContent = '登録中…';
-    const { data, error } = await supabase.auth.signUp({
-      email: emailInput.value,
-      password: passwordInput.value
-    });
-    if (error) {
-      status.textContent = '登録エラー: ' + error.message;
-    } else if (data.session) {
-      showLoggedIn(data.session.user);
-    } else {
-      status.textContent = '確認メールを送信しました。メール内のリンクを開いて登録を完了してください。';
+    statusEl.textContent = '登録中…';
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: emailInput.value,
+        password: passwordInput.value
+      });
+      if (error) {
+        statusEl.textContent = '登録エラー: ' + error.message;
+      } else if (data.session) {
+        showLoggedIn(data.session.user);
+      } else {
+        statusEl.textContent = '確認メールを送信しました。メール内のリンクを開いて登録を完了してください。';
+      }
+    } catch (e) {
+      statusEl.textContent = '通信に失敗しました: ' + e.message;
     }
   });
 
   document.getElementById('signInBtn').addEventListener('click', async () => {
-    status.textContent = 'ログイン中…';
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: emailInput.value,
-      password: passwordInput.value
-    });
-    if (error) {
-      status.textContent = 'ログインエラー: ' + error.message;
-    } else {
-      showLoggedIn(data.user);
+    statusEl.textContent = 'ログイン中…';
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailInput.value,
+        password: passwordInput.value
+      });
+      if (error) {
+        statusEl.textContent = 'ログインエラー: ' + error.message;
+      } else {
+        showLoggedIn(data.user);
+      }
+    } catch (e) {
+      statusEl.textContent = '通信に失敗しました: ' + e.message;
     }
   });
 
   document.getElementById('signOutBtn').addEventListener('click', async () => {
     await supabase.auth.signOut();
     showLoggedOut();
-    status.textContent = 'ログアウトしました。';
+    statusEl.textContent = 'ログアウトしました。';
   });
 </script>
 
