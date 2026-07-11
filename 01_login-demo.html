@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ログイン最小サンプル</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Hiragino Sans", sans-serif;
+    background: #f5f4f0;
+    color: #1a1a18;
+    padding: 16px;
+  }
+  h1 { font-size: 18px; margin-bottom: 12px; }
+  #status { font-size: 13px; color: #5f5e5a; margin-bottom: 12px; white-space: pre-wrap; }
+  input {
+    width: 100%;
+    max-width: 320px;
+    font-size: 15px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 0.5px solid rgba(0,0,0,0.2);
+    background: #fff;
+    display: block;
+    margin-bottom: 8px;
+  }
+  button {
+    background: #2a7a4b;
+    color: #fff;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    margin-right: 8px;
+    margin-bottom: 12px;
+  }
+  button.secondary { background: #7a7a76; }
+  #loggedInPanel { display: none; }
+</style>
+</head>
+<body>
+
+<h1>ログイン最小サンプル</h1>
+<p id="status">メールアドレスとパスワードを入力してください。</p>
+
+<div id="authPanel">
+  <input type="email" id="email" placeholder="メールアドレス" />
+  <input type="password" id="password" placeholder="パスワード(6文字以上)" />
+  <button id="signUpBtn">新規登録</button>
+  <button id="signInBtn" class="secondary">ログイン</button>
+</div>
+
+<div id="loggedInPanel">
+  <p id="userInfo"></p>
+  <button id="signOutBtn" class="secondary">ログアウト</button>
+</div>
+
+<script>
+  // このURLとキーは「公開してよい」ものなので、コードに直接書いて問題ない
+  const SUPABASE_URL = 'https://noafgianpquhxovknwbv.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_wIGG8HcHOHxd7kNWedx0jw_bqO6y3MR';
+
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const status = document.getElementById('status');
+  const authPanel = document.getElementById('authPanel');
+  const loggedInPanel = document.getElementById('loggedInPanel');
+  const userInfo = document.getElementById('userInfo');
+  const emailInput = document.getElementById('email');
+  const passwordInput = document.getElementById('password');
+
+  function showLoggedIn(user) {
+    authPanel.style.display = 'none';
+    loggedInPanel.style.display = 'block';
+    userInfo.textContent = 'ログイン中: ' + user.email;
+    status.textContent = '';
+  }
+
+  function showLoggedOut() {
+    authPanel.style.display = 'block';
+    loggedInPanel.style.display = 'none';
+  }
+
+  // ページを開いた時点で、既にログイン済みのセッションが残っていれば復元する
+  supabase.auth.getSession().then(({ data }) => {
+    if (data.session) showLoggedIn(data.session.user);
+  });
+
+  document.getElementById('signUpBtn').addEventListener('click', async () => {
+    status.textContent = '登録中…';
+    const { data, error } = await supabase.auth.signUp({
+      email: emailInput.value,
+      password: passwordInput.value
+    });
+    if (error) {
+      status.textContent = '登録エラー: ' + error.message;
+    } else if (data.session) {
+      showLoggedIn(data.session.user);
+    } else {
+      status.textContent = '確認メールを送信しました。メール内のリンクを開いて登録を完了してください。';
+    }
+  });
+
+  document.getElementById('signInBtn').addEventListener('click', async () => {
+    status.textContent = 'ログイン中…';
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: emailInput.value,
+      password: passwordInput.value
+    });
+    if (error) {
+      status.textContent = 'ログインエラー: ' + error.message;
+    } else {
+      showLoggedIn(data.user);
+    }
+  });
+
+  document.getElementById('signOutBtn').addEventListener('click', async () => {
+    await supabase.auth.signOut();
+    showLoggedOut();
+    status.textContent = 'ログアウトしました。';
+  });
+</script>
+
+</body>
+</html>
