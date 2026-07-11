@@ -466,13 +466,11 @@
 </div>
 
 <script>
-  const ALBUMS_KEY = 'machilog_albums_demo';
-  const WALKS_KEY = 'machilog_walks_demo';
-
-  // 記録(spots)はSupabaseのデータベースに保存する。他はまだlocalStorageのまま(段階的に移行中)
+  // 記録(spots)・散歩(walks)・アルバム(albums)は全てSupabaseのデータベースに保存する。
+  // 記録中の散歩(currentWalk)だけは端末内だけの一時データなのでlocalStorageのまま。
   let spots = [];
-  let albums = JSON.parse(localStorage.getItem(ALBUMS_KEY) || '[]');
-  let walks = JSON.parse(localStorage.getItem(WALKS_KEY) || '[]');
+  let albums = [];
+  let walks = [];
 
   // ============ ログイン(Supabase) ============
   const SUPABASE_URL = 'https://noafgianpquhxovknwbv.supabase.co';
@@ -492,6 +490,7 @@
     await fetchSpots();
     renderSpots();
     startGeolocationWatch();
+    await fetchWalks();
     initRouteMapIfNeeded();
     renderWalks();
     restoreInProgressWalk();
@@ -575,6 +574,68 @@
     if (error) throw error;
   }
 
+  // ---- 散歩(walks)をSupabaseとやり取りする関数 ----
+  function dbRowToWalk(row) {
+    return { id: row.id, startedAt: row.started_at, endedAt: row.ended_at, distance: row.distance, path: row.path };
+  }
+
+  async function fetchWalks() {
+    const { data, error } = await supabaseClient.from('walks').select('*').order('started_at', { ascending: true });
+    if (error) { alert('散歩ルートの取得に失敗しました: ' + error.message); return; }
+    walks = data.map(dbRowToWalk);
+  }
+
+  async function insertWalk(walk) {
+    const { data, error } = await supabaseClient.from('walks').insert({
+      started_at: walk.startedAt,
+      ended_at: walk.endedAt,
+      distance: walk.distance,
+      path: walk.path
+    }).select().single();
+    if (error) throw error;
+    return dbRowToWalk(data);
+  }
+
+  // ---- アルバム(albums)をSupabaseとやり取りする関数 ----
+  // アルバムは「どの記録が入っているか」を album_spots という中間テーブルで管理しているため、
+  // 取得時は spots テーブルと結合(ネストしたselect)して、写真の中身ごと一度に取ってくる
+  async function fetchAlbums() {
+    const { data, error } = await supabaseClient
+      .from('albums')
+      .select('*, album_spots(spots(*))')
+      .order('created_at', { ascending: true });
+    if (error) { alert('アルバムの取得に失敗しました: ' + error.message); return; }
+    albums = data.map((row) => ({
+      id: row.id,
+      title: row.title,
+      createdAt: row.created_at,
+      spots: row.album_spots.map((as) => dbRowToSpot(as.spots)).sort((a, b) => a.number - b.number)
+    }));
+  }
+
+  async function insertAlbum(title, spotIds) {
+    const { data: albumRow, error: albumError } = await supabaseClient
+      .from('albums').insert({ title }).select().single();
+    if (albumError) throw albumError;
+
+    const links = spotIds.map((spotId) => ({ album_id: albumRow.id, spot_id: spotId }));
+    const { error: linkError } = await supabaseClient.from('album_spots').insert(links);
+    if (linkError) throw linkError;
+
+    return {
+      id: albumRow.id,
+      title: albumRow.title,
+      createdAt: albumRow.created_at,
+      spots: spots.filter((s) => spotIds.includes(s.id))
+    };
+  }
+
+  async function deleteAlbumById(id) {
+    // album_spotsの中間データは、テーブル定義のon delete cascadeで自動的に一緒に消える
+    const { error } = await supabaseClient.from('albums').delete().eq('id', id);
+    if (error) throw error;
+  }
+
   // ============ タブ切り替え ============
   const tabButtons = document.querySelectorAll('.tabbar button');
   const tabPanels = {
@@ -602,10 +663,11 @@
       }
       // 一覧・アルバムタブは開くたびに、他の端末での変更も反映されるようSupabaseから取得し直す
       if (target === 'list') { await fetchSpots(); renderSpots(); }
-      if (target === 'album') { await fetchSpots(); renderSpotPicks(); renderAlbums(); }
+      if (target === 'album') { await fetchSpots(); await fetchAlbums(); renderSpotPicks(); renderAlbums(); }
       // ルートタブは、地図(Leaflet)が非表示状態では正しく初期化できないため、表示された時に初期化・サイズ再計算する
       if (target === 'route') {
         await fetchSpots();
+        await fetchWalks();
         initRouteMapIfNeeded();
         setTimeout(() => routeMap.invalidateSize(), 0);
         renderWalks();
@@ -944,12 +1006,12 @@
     }
   }
 
-  walkToggleBtn.addEventListener('click', () => {
+  walkToggleBtn.addEventListener('click', async () => {
     initRouteMapIfNeeded();
 
     if (!currentWalk) {
       // 散歩スタート
-      currentWalk = { id: Date.now(), startedAt: new Date().toISOString(), path: [] };
+      currentWalk = { id: 'local-' + Date.now(), startedAt: new Date().toISOString(), path: [] };
       if (lastPosition) {
         currentWalk.path.push({ lat: lastPosition.latitude, lng: lastPosition.longitude, t: Date.now() });
       }
@@ -963,16 +1025,21 @@
       if (currentWalk.path.length < 2) {
         alert('記録された地点が少ないため保存しません(移動しながらもう一度お試しください)。');
       } else {
-        const walk = {
-          id: currentWalk.id,
-          startedAt: currentWalk.startedAt,
-          endedAt: new Date().toISOString(),
-          path: currentWalk.path,
-          distance: pathDistance(currentWalk.path)
-        };
-        walks.push(walk);
-        localStorage.setItem(WALKS_KEY, JSON.stringify(walks));
-        renderWalkMarkers(walk.path, true); // 終了したのでS・G両方を表示する
+        walkToggleBtn.disabled = true;
+        try {
+          const walk = await insertWalk({
+            startedAt: currentWalk.startedAt,
+            endedAt: new Date().toISOString(),
+            path: currentWalk.path,
+            distance: pathDistance(currentWalk.path)
+          });
+          walks.push(walk);
+          renderWalkMarkers(walk.path, true); // 終了したのでS・G両方を表示する
+        } catch (e) {
+          alert('散歩ルートの保存に失敗しました: ' + e.message);
+        } finally {
+          walkToggleBtn.disabled = false;
+        }
       }
       currentWalk = null;
       saveInProgressWalk(); // currentWalkがnullになったので、記録中データを消す
@@ -1140,7 +1207,7 @@
     });
   }
 
-  createAlbumBtn.addEventListener('click', () => {
+  createAlbumBtn.addEventListener('click', async () => {
     const title = albumTitle.value.trim();
     if (!title) { alert('アルバムのタイトルを入力してください。'); return; }
 
@@ -1148,19 +1215,18 @@
       .map((cb) => cb.value);
     if (checked.length === 0) { alert('写真を1枚以上選んでください。'); return; }
 
-    const selectedSpots = spots.filter((s) => checked.includes(s.id));
-    const album = {
-      id: Date.now(),
-      title: title,
-      createdAt: new Date().toISOString(),
-      spots: selectedSpots
-    };
-    albums.push(album);
-    localStorage.setItem(ALBUMS_KEY, JSON.stringify(albums));
-
-    albumTitle.value = '';
-    renderSpotPicks();
-    renderAlbums();
+    createAlbumBtn.disabled = true;
+    try {
+      const album = await insertAlbum(title, checked);
+      albums.push(album);
+      albumTitle.value = '';
+      renderSpotPicks();
+      renderAlbums();
+    } catch (e) {
+      alert('アルバムの作成に失敗しました: ' + e.message);
+    } finally {
+      createAlbumBtn.disabled = false;
+    }
   });
 
   function renderAlbums() {
@@ -1186,18 +1252,22 @@
 
     albumList.querySelectorAll('button[data-view-id]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const album = albums.find((a) => a.id === Number(btn.dataset.viewId));
+        const album = albums.find((a) => a.id === btn.dataset.viewId);
         if (album) showAlbumDetail(album);
       });
     });
 
     albumList.querySelectorAll('button[data-delete-id]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = Number(btn.dataset.deleteId);
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.deleteId;
         if (!confirm('このアルバムを削除します。よろしいですか？')) return;
-        albums = albums.filter((a) => a.id !== id);
-        localStorage.setItem(ALBUMS_KEY, JSON.stringify(albums));
-        renderAlbums();
+        try {
+          await deleteAlbumById(id);
+          albums = albums.filter((a) => a.id !== id);
+          renderAlbums();
+        } catch (e) {
+          alert('削除に失敗しました: ' + e.message);
+        }
       });
     });
   }
