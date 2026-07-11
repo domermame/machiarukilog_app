@@ -6,6 +6,7 @@
 <title>街歩きログ</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --color-bg: #ffffff;
@@ -62,8 +63,10 @@
     background: var(--color-bg);
     border-bottom: 0.5px solid var(--color-border);
   }
+  .appbar { position: sticky; display: flex; align-items: center; gap: 8px; }
   .appbar h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
   .appbar .tagline { font-size: 11px; color: var(--color-text-secondary); margin-top: 1px; }
+  .appbar-logout { margin-left: auto; margin-bottom: 0; padding: 6px 12px; font-size: 12px; }
 
   h2 { font-size: 13px; font-weight: 600; margin: 22px 0 10px; color: var(--color-text-secondary); }
   #status { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 12px; }
@@ -295,6 +298,15 @@
   .overlay-title { font-size: 17px; font-weight: 700; margin: 10px 0 2px; }
   .overlay-meta { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 12px; }
 
+  .auth-overlay {
+    z-index: 100;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .auth-overlay input { max-width: 280px; }
+
   #albumDetailMap {
     width: 100%;
     max-width: 480px;
@@ -345,9 +357,21 @@
 </head>
 <body>
 
+<!-- ============ ログイン(未ログインの間、他の画面をすべて覆う) ============ -->
+<div id="authOverlay" class="overlay auth-overlay" style="display:flex;">
+  <h1>街歩きログ</h1>
+  <p class="tagline" style="margin-bottom:20px;">街歩きの記録アプリ</p>
+  <p id="authStatus" style="font-size:13px; color:var(--color-text-secondary); margin-bottom:12px; white-space:pre-wrap;"></p>
+  <input type="email" id="authEmail" placeholder="メールアドレス" />
+  <input type="password" id="authPassword" placeholder="パスワード(6文字以上)" />
+  <button id="authSignUpBtn">新規登録</button>
+  <button id="authSignInBtn" class="secondary">ログイン</button>
+</div>
+
 <header class="appbar">
   <h1>街歩きログ</h1>
   <p class="tagline">街歩きの記録アプリ</p>
+  <button id="logoutBtn" class="secondary appbar-logout">ログアウト</button>
 </header>
 
 <!-- ============ 撮るタブ ============ -->
@@ -442,18 +466,113 @@
 </div>
 
 <script>
-  const STORAGE_KEY = 'machilog_walk_demo_spots';
   const ALBUMS_KEY = 'machilog_albums_demo';
   const WALKS_KEY = 'machilog_walks_demo';
 
-  let spots = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  // 記録(spots)はSupabaseのデータベースに保存する。他はまだlocalStorageのまま(段階的に移行中)
+  let spots = [];
   let albums = JSON.parse(localStorage.getItem(ALBUMS_KEY) || '[]');
   let walks = JSON.parse(localStorage.getItem(WALKS_KEY) || '[]');
 
-  // 番号付けを追加する前に保存された記録には#番号がないため、記録した順番で振り直す
-  if (spots.some((s) => !s.number)) {
-    spots.forEach((s, i) => { s.number = i + 1; });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(spots));
+  // ============ ログイン(Supabase) ============
+  const SUPABASE_URL = 'https://noafgianpquhxovknwbv.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_wIGG8HcHOHxd7kNWedx0jw_bqO6y3MR';
+  // ライブラリ自体がグローバル変数 window.supabase を作るため、こちらは supabaseClient という別名にする
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const authOverlay = document.getElementById('authOverlay');
+  const authStatus = document.getElementById('authStatus');
+  const authEmail = document.getElementById('authEmail');
+  const authPassword = document.getElementById('authPassword');
+  const logoutBtn = document.getElementById('logoutBtn');
+
+  // データ取得・カメラ起動など、ログインしていないと意味がない初期化はここにまとめる
+  async function initAppAfterLogin() {
+    authOverlay.style.display = 'none';
+    await fetchSpots();
+    renderSpots();
+    startGeolocationWatch();
+    initRouteMapIfNeeded();
+    renderWalks();
+    restoreInProgressWalk();
+  }
+
+  supabaseClient.auth.getSession().then(({ data }) => {
+    if (data.session) {
+      initAppAfterLogin();
+    } else {
+      authStatus.textContent = 'メールアドレスとパスワードを入力してください。';
+    }
+  });
+
+  document.getElementById('authSignUpBtn').addEventListener('click', async () => {
+    authStatus.textContent = '登録中…';
+    try {
+      const { data, error } = await supabaseClient.auth.signUp({
+        email: authEmail.value,
+        password: authPassword.value
+      });
+      if (error) {
+        authStatus.textContent = '登録エラー: ' + error.message;
+      } else if (data.session) {
+        initAppAfterLogin();
+      } else {
+        authStatus.textContent = '確認メールを送信しました。メール内のリンクを開いて登録を完了してください。';
+      }
+    } catch (e) {
+      authStatus.textContent = '通信に失敗しました: ' + e.message;
+    }
+  });
+
+  document.getElementById('authSignInBtn').addEventListener('click', async () => {
+    authStatus.textContent = 'ログイン中…';
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email: authEmail.value,
+        password: authPassword.value
+      });
+      if (error) {
+        authStatus.textContent = 'ログインエラー: ' + error.message;
+      } else {
+        initAppAfterLogin();
+      }
+    } catch (e) {
+      authStatus.textContent = '通信に失敗しました: ' + e.message;
+    }
+  });
+
+  logoutBtn.addEventListener('click', async () => {
+    await supabaseClient.auth.signOut();
+    window.location.reload();
+  });
+
+  // ---- 記録(spots)をSupabaseとやり取りする関数 ----
+  function dbRowToSpot(row) {
+    return { id: row.id, number: row.number, timestamp: row.taken_at, lat: row.lat, lng: row.lng, photo: row.photo, memo: row.memo };
+  }
+
+  async function fetchSpots() {
+    const { data, error } = await supabaseClient.from('spots').select('*').order('number', { ascending: true });
+    if (error) { alert('記録の取得に失敗しました: ' + error.message); return; }
+    spots = data.map(dbRowToSpot);
+  }
+
+  async function insertSpot(spot) {
+    const { data, error } = await supabaseClient.from('spots').insert({
+      number: spot.number,
+      taken_at: spot.timestamp,
+      lat: spot.lat,
+      lng: spot.lng,
+      photo: spot.photo,
+      memo: spot.memo
+    }).select().single();
+    if (error) throw error;
+    return dbRowToSpot(data);
+  }
+
+  async function deleteSpotsByIds(ids) {
+    const { error } = await supabaseClient.from('spots').delete().in('id', ids);
+    if (error) throw error;
   }
 
   // ============ タブ切り替え ============
@@ -467,7 +586,7 @@
   let cameraStarted = false;
 
   tabButtons.forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const target = btn.dataset.tab;
 
       tabButtons.forEach((b) => b.classList.toggle('active', b === btn));
@@ -481,11 +600,12 @@
       } else {
         if (cameraStarted) stopCamera();
       }
-      // 一覧・アルバムタブは開くたびに最新のデータで再描画する
-      if (target === 'list') renderSpots();
-      if (target === 'album') { renderSpotPicks(); renderAlbums(); }
+      // 一覧・アルバムタブは開くたびに、他の端末での変更も反映されるようSupabaseから取得し直す
+      if (target === 'list') { await fetchSpots(); renderSpots(); }
+      if (target === 'album') { await fetchSpots(); renderSpotPicks(); renderAlbums(); }
       // ルートタブは、地図(Leaflet)が非表示状態では正しく初期化できないため、表示された時に初期化・サイズ再計算する
       if (target === 'route') {
+        await fetchSpots();
         initRouteMapIfNeeded();
         setTimeout(() => routeMap.invalidateSize(), 0);
         renderWalks();
@@ -550,8 +670,13 @@
   }
 
   // カメラは「撮る」タブが最初に開かれた時だけ起動する(初期表示はルートタブのため)
+  // GPSの取得開始はログイン後(initAppAfterLogin)に行う
 
-  if (navigator.geolocation) {
+  function startGeolocationWatch() {
+    if (!navigator.geolocation) {
+      gpsStatus.textContent = '位置情報 利用不可';
+      return;
+    }
     navigator.geolocation.watchPosition(
       (pos) => {
         lastPosition = pos.coords;
@@ -563,8 +688,6 @@
       (err) => { gpsStatus.textContent = '位置情報 取得失敗: ' + err.message; },
       { enableHighAccuracy: true }
     );
-  } else {
-    gpsStatus.textContent = '位置情報 利用不可';
   }
 
   shootBtn.addEventListener('click', () => {
@@ -597,29 +720,30 @@
     status.textContent = 'カメラが起動しました。撮影ボタンを押してください。';
   });
 
-  saveSpotBtn.addEventListener('click', () => {
-    const spot = {
-      id: Date.now(),
-      number: pendingNumber,
-      timestamp: pendingTimestamp,
-      lat: pendingPosition ? pendingPosition.latitude : null,
-      lng: pendingPosition ? pendingPosition.longitude : null,
-      photo: pendingPhotoDataUrl,
-      memo: memo.value
-    };
-    spots.push(spot);
-
+  saveSpotBtn.addEventListener('click', async () => {
+    saveSpotBtn.disabled = true;
+    status.textContent = '保存中…';
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(spots));
+      const spot = await insertSpot({
+        number: pendingNumber,
+        timestamp: pendingTimestamp,
+        lat: pendingPosition ? pendingPosition.latitude : null,
+        lng: pendingPosition ? pendingPosition.longitude : null,
+        photo: pendingPhotoDataUrl,
+        memo: memo.value
+      });
+      spots.push(spot);
+
+      if (routeMap) renderSpotMarkers(); // 地図が既に開かれていれば、新しいピンをすぐ反映する
+
+      cameraPanel.style.display = 'block';
+      editPanel.style.display = 'none';
+      status.textContent = '記録を保存しました(#' + spot.number + ')。次の場所へ進みましょう。';
     } catch (e) {
-      status.textContent = '保存容量がいっぱいの可能性があります: ' + e.message;
+      status.textContent = '保存エラー: ' + e.message;
+    } finally {
+      saveSpotBtn.disabled = false;
     }
-
-    if (routeMap) renderSpotMarkers(); // 地図が既に開かれていれば、新しいピンをすぐ反映する
-
-    cameraPanel.style.display = 'block';
-    editPanel.style.display = 'none';
-    status.textContent = '記録を保存しました(#' + spot.number + ')。次の場所へ進みましょう。';
   });
 
   // ---- 音声入力 ----
@@ -856,7 +980,6 @@
     walkToggleBtn.classList.add('danger');
     updateRouteLive(); // 記録中の地点数・距離を表示する(routeStatusはここで更新される)
   }
-  restoreInProgressWalk();
 
   // 番号ピンを地図上に作る共通処理。タップ→写真付きのミニポップアップ→その写真をタップで拡大表示、という2段階にする
   function addSpotMarker(target, spot) {
@@ -948,21 +1071,31 @@
     });
   }
 
-  deleteSelectedBtn.addEventListener('click', () => {
-    const checked = [...spotList.querySelectorAll('.spot-select:checked')].map((cb) => Number(cb.value));
+  deleteSelectedBtn.addEventListener('click', async () => {
+    const checked = [...spotList.querySelectorAll('.spot-select:checked')].map((cb) => cb.value);
     if (checked.length === 0) { alert('削除する記録を選んでください。'); return; }
     if (!confirm(checked.length + '件の記録を削除します。よろしいですか？')) return;
 
-    spots = spots.filter((s) => !checked.includes(s.id));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(spots));
-    renderSpots();
+    try {
+      await deleteSpotsByIds(checked);
+      spots = spots.filter((s) => !checked.includes(s.id));
+      renderSpots();
+      if (routeMap) renderSpotMarkers();
+    } catch (e) {
+      alert('削除に失敗しました: ' + e.message);
+    }
   });
 
-  clearAllBtn.addEventListener('click', () => {
+  clearAllBtn.addEventListener('click', async () => {
     if (!confirm('全ての記録を削除します。よろしいですか？')) return;
-    spots = [];
-    localStorage.removeItem(STORAGE_KEY);
-    renderSpots();
+    try {
+      await deleteSpotsByIds(spots.map((s) => s.id));
+      spots = [];
+      renderSpots();
+      if (routeMap) renderSpotMarkers();
+    } catch (e) {
+      alert('削除に失敗しました: ' + e.message);
+    }
   });
 
   // ============ アルバムタブ ============
@@ -999,7 +1132,7 @@
     if (!title) { alert('アルバムのタイトルを入力してください。'); return; }
 
     const checked = [...spotPickList.querySelectorAll('input[type="checkbox"]:checked')]
-      .map((cb) => Number(cb.value));
+      .map((cb) => cb.value);
     if (checked.length === 0) { alert('写真を1枚以上選んでください。'); return; }
 
     const selectedSpots = spots.filter((s) => checked.includes(s.id));
@@ -1208,12 +1341,7 @@
     div.textContent = str;
     return div.innerHTML;
   }
-
-  renderSpots();
-
-  // 初期表示が「ルート」タブなので、地図もページ読み込み時点で初期化しておく
-  initRouteMapIfNeeded();
-  renderWalks();
+  // 記録・GPS・地図の初期化はログイン後(initAppAfterLogin)にまとめて行う
 </script>
 
 </body>
